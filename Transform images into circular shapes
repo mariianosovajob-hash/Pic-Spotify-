@@ -1,0 +1,43 @@
+import pandas as pd
+import requests
+from PIL import Image, ImageDraw
+from io import BytesIO
+import os
+
+csv_path = "/content/sample_data/input.csv"
+out_dir = "/content/output_png"
+
+df = pd.read_csv(csv_path)
+os.makedirs(out_dir, exist_ok=True)
+
+def crop_to_square(img: Image.Image) -> Image.Image:
+    w, h = img.size
+    side = min(w, h)
+    left = (w - side) // 2
+    top = (h - side) // 2
+    return img.crop((left, top, left + side, top + side))
+
+def make_round(img: Image.Image) -> Image.Image:
+    img = img.convert("RGBA")
+    img = crop_to_square(img)
+    w, h = img.size
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, w, h), fill=255)
+    result = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    result.paste(img, (0, 0), mask)
+    return result
+
+for _, row in df.iterrows():
+    artist_id = row["id_artist"]
+    url = row["artist_pic"]
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        img = Image.open(BytesIO(resp.content))
+        rounded = make_round(img)
+        rounded.save(os.path.join(out_dir, f"{artist_id}.png"))
+    except Exception as e:
+        print(f"Ошибка с {url}: {e}")
+
+print("Готово, файлы в", out_dir)
